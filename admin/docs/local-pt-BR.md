@@ -35,7 +35,7 @@ O endereço do atalho `/biblioteca/index.html`, quando apontando para o host loc
 ## Validação realizada
 
 - `node --check` sem erros.
-- Doze verificações de tradução exata, preservação de URL desconhecida, contagens, títulos e espaço livre.
+- Vinte verificações de tradução exata, preservação de URL desconhecida, contagens, títulos, espaço livre e pluralização contextual do resumo de configuração (0 → 1 → 2 e idempotência).
 - Dicionário sem traduções conflitantes; uma duplicata idêntica.
 - Revisão do tratamento de mensagens e campos editáveis em contexto separado.
 

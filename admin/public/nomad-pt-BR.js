@@ -1525,6 +1525,9 @@ Cores|Núcleos
 Physical Cores|Núcleos físicos
 Virtualization|Virtualização
 Vendor|Fornecedor
+Links|Atalhos
+Ai|IA
+capability|recurso
 `.trim().split('\n').map((line) => {
     const separator = line.lastIndexOf('|')
     return [line.slice(0, separator), line.slice(separator + 1)]
@@ -1533,6 +1536,7 @@ Vendor|Fornecedor
   const dictionary = new Map(entries)
   const normalize = (value) => value.replace(/\s+/g, ' ').trim()
   const translated = new WeakMap()
+  const original = new WeakMap()
   const excluded = 'script,style,noscript,code,pre,textarea,[contenteditable]:not([contenteditable="false"]),[translate="no"],[data-no-translate],.prose,.cm-editor,.monaco-editor,.break-words,.whitespace-pre-wrap,button.group .truncate'
   const attributes = ['placeholder', 'aria-label', 'title', 'alt']
 
@@ -1540,12 +1544,14 @@ Vendor|Fornecedor
     const normalized = normalize(value)
     const result = dictionary.get(normalized)
     if (result) return value.replace(value.trim(), result)
-    const count = normalized.match(/^(\d+) (content categories|creator packs|map regions|AI models|capabilities|files|items|apps|models|books|regions|cores|threads|seconds|minutes|hours|days)(.*)$/)
+    const count = normalized.match(/^(\d+) (content categories|creator packs|map regions|AI models|capabilities|capability|files|items|apps|models|books|regions|cores|threads|seconds|minutes|hours|days)(.*)$/)
     if (count && dictionary.has(count[2])) return `${count[1]} ${dictionary.get(count[2])}${count[3]}`
     const suffix = normalized.match(/^(.*?)(\s*[:(]\s*)$/)
     if (suffix && dictionary.has(suffix[1])) return `${dictionary.get(suffix[1])}${suffix[2]}`
     const freeSpace = normalized.match(/^([\d.,]+\s*[KMGT]?B) will remain free$/)
     if (freeSpace) return `${freeSpace[1]} permanecerão livres`
+    const headingCount = normalized.match(/^(Installed|Available)\s*\((\d+)\)$/)
+    if (headingCount) return `${headingCount[1] === 'Installed' ? 'Instalados' : 'Disponíveis'} (${headingCount[2]})`
     const action = normalized.match(/^(Install|Uninstall|Start|Stop|Restart|Delete|Update|Force Reinstall) (.+)$/)
     if (action) return `${dictionary.get(action[1]) || action[1]} ${dictionary.get(action[2]) || action[2]}`
     if (normalized.includes(' | Project NOMAD')) return normalized.replace(/^(.*?) \| Project NOMAD$/, (_, title) => `${dictionary.get(title) || title} | Project NOMAD`)
@@ -1562,10 +1568,44 @@ Vendor|Fornecedor
   function updateText(node) {
     if (!allowed(node.parentElement)) return
     const value = node.nodeValue || ''
-    if (translated.get(node) === value) return
-    const output = translate(value)
+    if (translated.get(node) !== value) original.set(node, value)
+    const summary = setupSummary(node)
+    if (!summary && translated.get(node) === value) return
+    const output = summary ? translateSummaryText(node) : translate(value)
     translated.set(node, output)
     if (output !== value) node.nodeValue = output
+  }
+
+  function setupSummary(node) {
+    if (window.location.pathname !== '/easy-setup') return null
+    const paragraph = node.parentElement
+    if (!paragraph?.matches('p.text-sm.text-text-secondary')) return null
+    if (!paragraph.closest('.flex.justify-between.mt-8.pt-4.border-t')) return null
+    return paragraph
+  }
+
+  function translateSummaryText(node) {
+    const source = original.get(node) ?? node.nodeValue ?? ''
+    const value = normalize(source)
+    const stems = {
+      'map region': ['região de mapas', 'regiões de mapas'],
+      'content categor': ['categoria de conteúdo', 'categorias de conteúdo'],
+      'creator pack': ['pacote de criador', 'pacotes de criadores'],
+      'AI model': ['modelo de IA', 'modelos de IA'],
+    }
+    if (stems[value]) {
+      let previous = node.previousSibling
+      while (previous && !/^\d+$/.test(normalize(original.get(previous) ?? previous.nodeValue ?? ''))) previous = previous.previousSibling
+      const count = previous ? Number(normalize(original.get(previous) ?? previous.nodeValue ?? '')) : 0
+      return source.replace(source.trim(), stems[value][count === 1 ? 0 : 1])
+    }
+    if (['s', 'ies', 'y'].includes(value)) {
+      let previous = node.previousSibling
+      while (previous && !normalize(original.get(previous) ?? previous.nodeValue ?? '')) previous = previous.previousSibling
+      const stem = normalize(previous ? original.get(previous) ?? previous.nodeValue ?? '' : '')
+      if (stems[stem]) return ''
+    }
+    return translate(source)
   }
 
   function updateAttributes(element) {
@@ -1624,7 +1664,7 @@ Vendor|Fornecedor
     }
     new MutationObserver((mutations) => {
       for (const mutation of mutations) {
-        if (mutation.type === 'characterData') pending.add(mutation.target)
+        if (mutation.type === 'characterData') pending.add(setupSummary(mutation.target) || mutation.target)
         else if (mutation.type === 'attributes') pending.add(mutation.target)
         else for (const node of mutation.addedNodes) pending.add(node)
       }
